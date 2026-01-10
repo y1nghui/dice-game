@@ -7,4 +7,4 @@ Dice rolling game
 3. ./server
 
 - To run client(player), type this on a seperate terminal (3)
-1. ./client <username>
+1. ./client (username)
