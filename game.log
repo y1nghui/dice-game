@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 [Sun Jan 11 13:37:24 2026] Server started - waiting for players
 [Sun Jan 11 13:37:32 2026] Player 1 connected
 [Sun Jan 11 13:37:32 2026] abc (slot 1) disconnected
@@ -6,3 +7,10 @@
 [Sun Jan 11 13:42:02 2026] Player 3 connected
 [Sun Jan 11 13:42:02 2026] linda (slot 3) disconnected
 [Sun Jan 11 13:42:02 2026] Game started - all players connected
+=======
+[Sat Jan 24 17:50:05 2026] Server started - waiting for players
+[Sat Jan 24 17:51:07 2026] Player 1 connected
+[Sat Jan 24 17:51:33 2026] Player 2 connected
+[Sat Jan 24 17:52:12 2026] Player 3 connected
+[Sat Jan 24 17:52:13 2026] Game started - all players connected
+>>>>>>> 50a1cc2542d0f81856e8705a299c5ea3a58aba27
