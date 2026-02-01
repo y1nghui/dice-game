@@ -229,21 +229,37 @@ void play_game() {
     
     char my_last_action[256] = ""; 
     char current_status[256];
+    
+    // Track state to avoid unnecessary redraws
+    int last_turn = -1;
+    int last_round = -1;
 
     while (shared_state->game_active) {
         
-        // If not your turn
-        if (shared_state->current_turn != player_id) {
-            snprintf(current_status, sizeof(current_status), "Waiting for %s...", 
-                   shared_state->player_names[shared_state->current_turn]);
-            
-            display_grid(my_last_action, current_status);
-            sleep(1); 
+        int current_turn = shared_state->current_turn;
+        int current_round = shared_state->round_num;
+        
+        // Only redraw if turn or round changed
+        if (current_turn != last_turn || current_round != last_round) {
+            if (current_turn == player_id) {
+                display_grid(my_last_action, "YOUR TURN! Press ENTER to roll...");
+            } else {
+                snprintf(current_status, sizeof(current_status), 
+                        "Waiting for %s...", 
+                        shared_state->player_names[current_turn]);
+                display_grid(my_last_action, current_status);
+            }
+            last_turn = current_turn;
+            last_round = current_round;
+        }
+        
+        // If not your turn, just wait
+        if (current_turn != player_id) {
+            usleep(100000); // 0.1 second
             continue; 
         }
 
-        // If your turn
-        display_grid(my_last_action, "YOUR TURN! Press ENTER to roll...");
+        // Your turn - wait for Enter key
         getchar();
 
         char buffer[256] = "ROLL";
@@ -258,10 +274,12 @@ void play_game() {
                 "You rolled a %d! Moved to R%d.", 
                 dice_roll, shared_state->player_positions[player_id]);
             
+            // Show result briefly
             display_grid(my_last_action, "Turn complete.");
-            sleep(2); 
+            sleep(1); // Reduced from 2 to 1 second for faster gameplay
         }
     }
+    
     close(fd_write);
     close(fd_read);
 }
