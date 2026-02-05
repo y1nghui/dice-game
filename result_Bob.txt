@@ -1,0 +1,4 @@
+Game Result for Bob
+Winner: Bob
+My Wins: 1
+Final Position: R20
