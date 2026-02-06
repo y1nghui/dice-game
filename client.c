@@ -36,7 +36,7 @@ struct GameInfo
 
 struct GameInfo *gptr = NULL; // gptr = game pointer
 int my_player_id = -1;
-char my_name[50];
+char my_name[7];
 
 // Function declarations
 void ssm(); // ssm = setting share memeory 
@@ -47,7 +47,7 @@ void cr(); // cr = clean resourcws
 int Fslot(); // Fslot = find available slot 
 int winput(); // winput = waiting for input 
 
-// Wait for user input with timeout
+// waiting for user input with timeout 
 int winput() 
 {
     fd_set read_fds;
@@ -82,10 +82,23 @@ int main(int argc, char *argv[])
     strncpy(my_name, argv[1], sizeof(my_name) - 1);
     my_name[sizeof(my_name) - 1] = '\0';
     
+    printf("\n");
     printf("===========================================\n");
-    printf("  Dice Race Game Player\n");
+    printf("  DICE RACE GAME - PLAYER CLIENT\n");
+    printf("===========================================\n");
     printf("  Player: %s\n", my_name);
     printf("===========================================\n");
+    printf("\n");
+    printf("GAME RULES:\n");
+    printf("- Minimum %d players needed to start\n", 3);
+    printf("- Maximum %d players can join\n", MXP);
+    printf("- Race to Row %d to WIN!\n", WC);
+    printf("- Press ENTER to roll the dice\n");
+    printf("- Wait patiently for your turn\n");
+    printf("\n");
+    printf("Good luck, %s! May the dice be with you!\n", my_name);
+    printf("===========================================\n");
+    printf("\n");
     
     ssm();
     
@@ -132,8 +145,12 @@ int main(int argc, char *argv[])
     }
     
     printf("\n===========================================\n");
-    printf("  Game Started!\n");
+    printf("  GAME STARTED!\n");
+    printf("===========================================\n");
     printf("  Race to position %d!\n", WC);
+    printf("  %d players are competing!\n", gptr->CP);
+    printf("\n");
+    printf("  Ready... Set... ROLL!\n");
     printf("===========================================\n\n");
     
     play();
@@ -161,14 +178,19 @@ int main(int argc, char *argv[])
     if (gptr->FW == my_player_id) 
     {
         printf("#                                        #\n");
-        printf("#     CONGRATULATIONS! YOU WON!          #\n");
+        printf("#      CONGRATULATIONS! YOU WON!         #\n");
+        printf("#                                        #\n");
+        printf("#   You reached Row %d first!            #\n", WC);
+        printf("#         CHAMPION: %s!                  #\n", my_name);
         printf("#                                        #\n");
     } 
     else 
     {
         printf("#                                        #\n");
-        printf("#      Game Over! %s won the game!       #\n", 
-               gptr->PN[gptr->FW]);
+        printf("#            GAME OVER!                  #\n");
+        printf("#                                        #\n");
+        printf("#          Winner: %s                    #\n", gptr->PN[gptr->FW]);
+        printf("#   Better luck next time, %s!           #\n", my_name);
         printf("#                                        #\n");
     }
     printf("##########################################\n");
@@ -194,7 +216,7 @@ void ssm()
     }
     
     gptr = mmap(NULL, sizeof(struct GameInfo), 
-                    PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd,0);
+                    PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
     
     if (gptr == MAP_FAILED) 
     {
@@ -265,7 +287,7 @@ void sg(const char *last_action, const char *current_status)
             char display_char;
             display_char = ' ';
             
-            if (gptr->player_active[p] ==1 && gptr->PP[p] == row) 
+            if (gptr->player_active[p] == 1 && gptr->PP[p] == row) 
             {
                 display_char = gptr->PN[p][0];
             }
@@ -284,7 +306,7 @@ void sg(const char *last_action, const char *current_status)
         char display_char;
         display_char = ' ';
         
-        if (gptr->player_active[p] ==1 && gptr->PP[p] == 0) 
+        if (gptr->player_active[p] == 1 && gptr->PP[p] == 0) 
         {
             display_char = gptr->PN[p][0];
         }
@@ -296,9 +318,9 @@ void sg(const char *last_action, const char *current_status)
     
     printf("\nCurrent Standings:\n");
     int i;
-    for (i = 0; i < MXP; i =i+1) 
+    for (i = 0; i < MXP; i = i + 1) 
     {
-        if (gptr->player_active[i] ==1) 
+        if (gptr->player_active[i] == 1) 
         {
             printf("  %-10s | Position: R%-2d\n", 
                    gptr->PN[i], 
@@ -333,7 +355,7 @@ void play()
     int fd_read;
     
     fd_write = open(fifo_write_path, O_WRONLY);
-    fd_read = open(fifo_read_path, O_RDONLY);
+    fd_read = open(fifo_read_path, O_RDONLY | O_NONBLOCK);
     
     if (fd_write == -1 || fd_read == -1) 
     {
@@ -349,13 +371,18 @@ void play()
 
     while (1) 
     {
-        if (gptr->game_active ==0) 
+        if (gptr->game_active == 0) 
         {
             break;
         }
         
         if (gptr->CT != my_player_id) 
         {
+            if (gptr->game_active == 0) 
+            {
+                break;
+            }
+            
             snprintf(current_status, sizeof(current_status), 
                      "Waiting for %s's turn...", 
                      gptr->PN[gptr->CT]);
@@ -365,33 +392,51 @@ void play()
             continue;
         }
 
-        if (gptr->game_active ==0) {
+        if (gptr->game_active == 0) 
+        {
             break;
         }
 
         int key_pressed;
-        key_pressed=0;
+        key_pressed = 0;
         
-        while (gptr->game_active == 1 && key_pressed ==0){
+        while (gptr->game_active == 1 && key_pressed == 0)
+        {
             sg(my_last_action, "YOUR TURN! Press ENTER to roll...");
             key_pressed = winput();
             
-            if (gptr->game_active ==0) {
+            if (gptr->game_active == 0) 
+            {
                 break;
             }
         }
 
-        if (gptr->game_active ==0) {
+        if (gptr->game_active == 0) 
+        {
             break;
         }
 
         char buffer[256];
         strcpy(buffer, "ROLL");
-        write(fd_write, buffer, strlen(buffer)+1);
+        write(fd_write, buffer, strlen(buffer) + 1);
 
         memset(buffer, 0, sizeof(buffer));
         ssize_t bytes_read;
-        bytes_read = read(fd_read, buffer, sizeof(buffer));
+        int read_attempts;
+        read_attempts = 0;
+        
+        while (read_attempts < 100 && gptr->game_active == 1)
+        {
+            bytes_read = read(fd_read, buffer, sizeof(buffer));
+            
+            if (bytes_read > 0)
+            {
+                break;
+            }
+            
+            usleep(50000);
+            read_attempts = read_attempts + 1;
+        }
         
         if (bytes_read > 0) 
         {
@@ -402,7 +447,7 @@ void play()
             
             sg(my_last_action, "Turn completed");
             
-            if (gptr->game_active ==0) 
+            if (gptr->game_active == 0) 
             {
                 break;
             }
@@ -410,7 +455,7 @@ void play()
             sleep(2);
         }
         
-        if (gptr->game_active ==0) 
+        if (gptr->game_active == 0) 
         {
             break;
         }
@@ -420,7 +465,8 @@ void play()
     close(fd_read);
 }
 
-void cr() 
+// clean resources 
+void cr()
 {
     if (gptr != NULL) 
     {

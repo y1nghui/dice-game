@@ -60,6 +60,8 @@ struct GameInfo *gptr = NULL; // gptr = game pointer
 int shared_mem_fd;
 pthread_t logger_thread, scheduler_thread;
 volatile sig_atomic_t server_running = 1;
+pid_t child_pids[MXP];
+int child_count_total = 0;
 
 // Function declarations
 void ssm(); // ssm = setting share memeory 
@@ -86,7 +88,7 @@ void ls()
         printf("[SERVER] No previous scores file found\n");
         printf("[SERVER] Starting with fresh scores\n");
         int i;
-        for (i = 0; i < MXP; i = i+1) 
+        for (i = 0; i < MXP; i = i + 1) 
         {
             gptr->TWN[i] = 0;
         }
@@ -170,11 +172,30 @@ void ss()
 
 int main() 
 {
-    printf("===========================================\n");
-    printf("  Dice Race Game Server Started\n");
-    printf("===========================================\n");
+    printf("\n");
+    printf(" ============================================================\n");
+    printf(" |               Welcome to DICE RACE GAME!                 |\n");
+    printf(" ============================================================\n");
+    printf(" |                                                          |\n");
+    printf(" | HOW TO PLAY (Instruction):                               |\n");
+    printf(" | 1. Wait for minimum %d players to join                    |\n", MNP);
+    printf(" |  (Maximum of  %d players are allowed)                     |\n", MXP);
+    printf(" | 2. Type: ./client YourName (in your own terminal)        |\n");
+    printf(" | 3. HIT ENTER when it's your turn, else WAIT              |\n");
+    printf(" | 4. First player that reach the Row %d WINS!              |\n", wc);
+    printf(" |                                                          |\n");
+    printf(" | Will the winner be you? Or them? Let's find out!         |\n");
+    printf(" ============================================================\n");
+    printf("\n");
+
     printf("Server Process ID: %d\n", getpid());
     printf("Waiting for %d to %d players...\n\n", MNP, MXP);
+    
+    int i;
+    for (i = 0; i < MXP; i = i + 1) 
+    {
+        child_pids[i] = -1;
+    }
     
     signal(SIGCHLD, sigchld_handler);
     signal(SIGINT, sigint_handler);
@@ -229,7 +250,6 @@ int main()
     
     while (server_running == 1 && gptr->CP < gptr->mnpr) 
     {
-        int i;
         for (i = 0; i < MXP; i = i + 1) 
         {
             if (gptr->player_active[i] == 0) 
@@ -270,6 +290,11 @@ int main()
                         gptr->CP = gptr->CP - 1;
                         pthread_mutex_unlock(&gptr->shm_lock);
                     }
+                    else
+                    {
+                        child_pids[i] = child_pid;
+                        child_count_total = child_count_total + 1;
+                    }
                 }
             }
         }
@@ -295,8 +320,7 @@ int main()
     
     int first_active;
     first_active = -1;
-    int i;
-    for (i = 0; i < MXP; i =i+1) 
+    for (i = 0; i < MXP; i = i + 1) 
     {
         if (gptr->player_active[i] ==1) 
         {
@@ -376,15 +400,20 @@ int main()
                         gptr->CP = gptr->CP - 1;
                         pthread_mutex_unlock(&gptr->shm_lock);
                     }
+                    else
+                    {
+                        child_pids[j] = child_pid;
+                        child_count_total = child_count_total + 1;
+                    }
                 }
             }
         }
         sleep(1);
     }
     
-    printf("\n===========================================\n");
-    printf("  Game Ended!\n");
-    printf("===========================================\n");
+    printf("\n=========================================\n");
+    printf("                 Game Ended!               \n");
+    printf("============================================\n");
     
     if (gptr->FW >= 0 && gptr->FW<MXP) 
     {
@@ -393,7 +422,7 @@ int main()
     }
     
     printf("\nFinal Standings:\n");
-    for (i = 0; i < MXP; i=+1) 
+    for (i = 0; i < MXP; i = i + 1) 
     {
         if (gptr->player_active[i] ==1) 
         {
@@ -407,10 +436,31 @@ int main()
     ss();
     
     printf("\nWaiting for all child processes to finish...\n");
-    sleep(2);
     
     int wait_status;
-    while (waitpid(-1, &wait_status, WNOHANG) >0);
+    int children_left;
+    children_left = child_count_total;
+    
+    while (children_left > 0)
+    {
+        pid_t finished_pid;
+        finished_pid = waitpid(-1, &wait_status, 0);
+        
+        if (finished_pid > 0)
+        {
+            children_left = children_left - 1;
+            printf("[Main] Child process %d finished (%d remaining)\n", finished_pid, children_left);
+        }
+        else if (finished_pid == -1)
+        {
+            if (errno == ECHILD)
+            {
+                break;
+            }
+        }
+    }
+    
+    printf("[Main] All child processes have finished\n");
     
     printf("\n[Main] Cleaning up and shutting down...\n");
     
@@ -427,8 +477,8 @@ int main()
     csm();
     
     printf("\n===========================================\n");
-    printf("  Server Shutdown Complete\n");
-    printf("===========================================\n");
+    printf("         Server Shutdown Complete           \n");
+    printf("==============================================\n");
     
     return 0;
 }
@@ -474,7 +524,7 @@ void csm()
     shm_unlink("/dice_game_shm");
     
     int i;
-    for (i = 0; i < MXP; i =i+1) 
+    for (i = 0; i < MXP; i = i + 1) 
     {
         char fifo_path[256];
         
@@ -505,7 +555,7 @@ void intg()
     memset(gptr, 0, sizeof(struct GameInfo));
     
     int i;
-    for (i = 0; i < MXP; i = i+1) 
+    for (i = 0; i < MXP; i = i + 1) 
     {
         gptr->PP[i] = 0;
         gptr->player_active[i] =0;
@@ -620,7 +670,7 @@ void *stf(void *arg)
         game_should_end = 0;
         
         int i;
-        for (i = 0; i < MXP; i =i+1) 
+        for (i = 0; i < MXP; i = i + 1 ) 
         {
             if (gptr->PP[i] >= wc) 
             {
@@ -724,7 +774,7 @@ void hd(int player_id)
                     
                     gptr->CT = next_player;
                     
-                    if (next_player == 0) 
+                    if (next_player ==0) 
                     {
                         gptr->round = gptr->round +1;
                     }
@@ -752,6 +802,10 @@ void hd(int player_id)
         } 
         else 
         {
+            if (gptr->game_active == 0)
+            {
+                break;
+            }
             usleep(50000);
         }
     }
@@ -780,7 +834,7 @@ void sigchld_handler(int sig)
     {
         process_id = waitpid(-1, &wait_status, WNOHANG);
         
-        if (process_id > 0) 
+        if (process_id >0) 
         {
             char exit_message[128];
             snprintf(exit_message, sizeof(exit_message), 
