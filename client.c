@@ -236,10 +236,6 @@ void play_game() {
     
     char my_last_action[256] = ""; 
     char current_status[256];
-    
-    // Track state to avoid unnecessary redraws
-    int last_turn = -1;
-    int last_round = -1;
 
     while (g_ptr->game_active) 
     {
