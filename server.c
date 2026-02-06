@@ -13,7 +13,8 @@
 #include <errno.h>
 
 // main setting 
-#define MP 3
+#define MIN_P 3
+#define MAX_P 5  // Support 3-5 players
 #define WC 20
 #define FIFO_PREFIX "/tmp/player_"
 #define LOG_FIFO "/tmp/dice_game_log_fifo"
@@ -34,19 +35,20 @@ typedef struct{
 
 LogQueue log_queue;
 
-typedef struct{
-    int PP[MP];
+typedef struct 
+{
+    int PP[MAX_P];
     int CT;
     int game_active;
     int CP;
-    int player_active[MP];
+    int player_active[MAX_P];
     int FW;
     int round;
-    char PN[MP][50];
-    int winner[MP];
-    pthread_mutex_t shm_lock;
-    pthread_mutex_t table_sync;
-}GameInfo;
+    char PN[MAX_P][50];
+    int winner[MAX_P];
+    pthread_mutex_t shm_lock; 
+    pthread_mutex_t table_sync; 
+} GameInfo;
 
 GameInfo *gptr= NULL;
 int shm_fd;
@@ -195,9 +197,9 @@ int main()
     
     log_message("Server started - waiting for players");
     
-    while (sr && gptr->CP < MP) 
+    while (sr && gptr->CP < MAX_P) 
     {
-         for (int i = 0; i < MP; i++) 
+         for (int i = 0; i < MAX_P; i++) 
          {
               if (!gptr->player_active[i]) 
               {
@@ -212,7 +214,7 @@ int main()
                     pthread_mutex_unlock(&gptr->shm_lock);
                     
                     printf("Player %d connected (%d/%d)\n", i + 1, 
-                           gptr->CP, MP);
+                           gptr->CP, MAX_P);
                     
                      char log_msg[256];
                     snprintf(log_msg, sizeof(log_msg), "Player %d connected", i + 1);
@@ -237,7 +239,7 @@ int main()
         sleep(1); 
     }
     
-    if (gptr->CP == MP) 
+    if (gptr->CP == MAX_P) 
     {
          printf("=== All players connected! Starting game ===\n");
         
