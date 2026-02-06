@@ -1,0 +1,4 @@
+Game Result for Alice
+Winner: Bob
+My Wins: 0
+Final Position: R12
