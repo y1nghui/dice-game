@@ -1,4 +1,4 @@
-// OS Assignment - dice game - client.c
+// OS Assignment - dice game - client.c (FIXED FOR 3-5 PLAYERS)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,7 +47,7 @@ int fas();                      // fas = find available slot
 int main(int argc, char *argv[]) {
     if (argc != 2) 
     { 
-        printf("Please enter a valid instructions: %s (YourName)\n", argv[0]);
+        printf("Please enter valid instructions: %s (YourName)\n", argv[0]);
         return 1;
     }
     
@@ -306,7 +306,7 @@ void play_game()
             if (current_turn != player_id) 
             {
                 snprintf(current_status, sizeof(current_status), 
-                        "Waiting for %s...", g_ptr->PN[current_turn]);
+                         "Waiting for %s...", g_ptr->PN[current_turn]);
                 d_grid(my_last_action, current_status);
             } 
             else 
@@ -338,8 +338,8 @@ void play_game()
             sscanf(buffer, "ROLLED %d", &roll);
 
             snprintf(my_last_action, sizeof(my_last_action), 
-                "You rolled a %d! Moved to R%d.", 
-                roll, g_ptr->PP[player_id]);
+                     "You rolled a %d! Moved to R%d.", 
+                     roll, g_ptr->PP[player_id]);
             
             d_grid(my_last_action, "Turn complete.");
             sleep(1);
