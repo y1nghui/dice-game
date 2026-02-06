@@ -1,0 +1,8 @@
+[Fri Feb  6 17:37:42 2026] Server started - waiting for players
+[Fri Feb  6 17:37:58 2026] Player 1 connected
+[Fri Feb  6 17:38:14 2026] Player 2 connected
+[Fri Feb  6 17:38:29 2026] Player 3 connected
+[Fri Feb  6 17:38:33 2026] Game started with 3 players
+[Fri Feb  6 17:38:44 2026] Player c rolled a 4! (R0 -> R4)
+[Fri Feb  6 17:38:46 2026] Player b rolled a 5! (R0 -> R5)
+[Fri Feb  6 17:38:46 2026] [SYSTEM] Player Process 2143 has exited, cleaning up the grid

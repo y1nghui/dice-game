@@ -1,4 +1,4 @@
-// OS Assignment - dice game - server.c (FIXED FOR CROSS-PROCESS LOGGING)
+// OS Assignment - dice game - server.c (FIXED FOR 3-5 PLAYERS)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,45 +13,47 @@
 #include <errno.h>
 
 // main setting 
-#define MP 3
+#define MIN_P 3
+#define MAX_P 5  // Support 3-5 players
 #define WC 20
 #define FIFO_PREFIX "/tmp/player_"
 #define LOG_FIFO "/tmp/dice_game_log_fifo"
 #define gamel "game.log"
-#define srocesf "scores.txt"
+#define scoresf "scores.txt"
 
 typedef struct LogNode {
     char message[256];
     struct LogNode *next;
-}LogNode;
+} LogNode;
 
-typedef struct{
+typedef struct {
     LogNode *head;
     LogNode *tail;
     pthread_mutex_t mutex;
     pthread_cond_t cond;
-}LogQueue;
+} LogQueue;
 
 LogQueue log_queue;
 
-typedef struct{
-    int PP[MP];
+typedef struct 
+{
+    int PP[MAX_P];
     int CT;
     int game_active;
     int CP;
-    int player_active[MP];
+    int player_active[MAX_P];
     int FW;
     int round;
-    char PN[MP][50];
-    int winner[MP];
-    pthread_mutex_t shm_lock;
-    pthread_mutex_t table_sync;
-}GameInfo;
+    char PN[MAX_P][50];
+    int winner[MAX_P];
+    pthread_mutex_t shm_lock; 
+    pthread_mutex_t table_sync; 
+} GameInfo;
 
-GameInfo *gptr= NULL;
+GameInfo *gptr = NULL;
 int shm_fd;
 pthread_t log_t, sch_t; // log_t = logger thread, sch_t = scheduler thread
-volatile sig_atomic_t sr=1; // sr = server running
+volatile sig_atomic_t sr = 1; // sr = server running
 int log_fifo_fd = -1; // FIFO for cross-process logging
 
 // pre-declaration of functions
@@ -69,11 +71,11 @@ void ls(); // ls = load scores
 void ss(); // ss = save scores
 
 void ls() {
-    FILE *f_ptr = fopen(srocesf, "r");
+    FILE *f_ptr = fopen(scoresf, "r");
     
     if (f_ptr == NULL) {
-        printf("[SERVER] No scores.txt found, player start with initial of 0 \n");
-        for (int i = 0; i < MP; i++) {
+        printf("[SERVER] No scores.txt found, players start with initial of 0\n");
+        for (int i = 0; i < MAX_P; i++) {
             gptr->winner[i] = 0;
         }
         return; 
@@ -94,7 +96,7 @@ void ls() {
         }
 
         char *score_part = strrchr(text_line, ' '); 
-        if (score_part != NULL && current_index < MP) {
+        if (score_part != NULL && current_index < MAX_P) {
             int value = atoi(score_part);
             gptr->winner[current_index] = value;
             
@@ -109,7 +111,7 @@ void ls() {
 
 void ss() 
 {
-    FILE *f = fopen(srocesf, "w");
+    FILE *f = fopen(scoresf, "w");
     if (f) {
         fprintf(f, "======================================\n");
         fprintf(f, "|           Dice Game Results        |\n");
@@ -117,13 +119,13 @@ void ss()
         fprintf(f, "| %-20s | %-10s |\n", "Player Name", "Score");
         fprintf(f, "======================================\n");
 
-        for (int i = 0; i < MP; i++) 
+        for (int i = 0; i < MAX_P; i++) 
         {
             char display_name[50];
                         
             if (strlen(gptr->PN[i]) > 0) 
             {
-                 strncpy(display_name, gptr->PN[i], 49);
+                strncpy(display_name, gptr->PN[i], 49);
                 display_name[49] = '\0';
             } else 
             {
@@ -135,7 +137,7 @@ void ss()
         
         fprintf(f, "======================================\n");
         fclose(f);
-        printf("[SERVER] Scores saved to %s (Table Format)\n", srocesf);
+        printf("[SERVER] Scores saved to %s (Table Format)\n", scoresf);
     } else 
     {
         perror("Failed to save scores");
@@ -146,7 +148,7 @@ int main()
 {
     printf("=== Dice Race Game Server - Started ===\n");
     printf("=== Server PID: %-24d ===\n", getpid());
-    printf("Waiting for %d players to connect...\n\n", MP);
+    printf("Waiting for %d-%d players to connect...\n\n", MIN_P, MAX_P);
     
     signal(SIGCHLD, sigchld_handler);
     signal(SIGINT, sigint_handler);
@@ -157,8 +159,8 @@ int main()
         exit(EXIT_FAILURE);
     }
     
-     ssm();
-     init();
+    ssm();
+    init();
     
     pthread_mutexattr_t attr;
     pthread_mutexattr_init(&attr);
@@ -195,26 +197,27 @@ int main()
     
     log_message("Server started - waiting for players");
     
-    while (sr && gptr->CP < MP) 
+    // Wait for minimum players, then start game when ready
+    while (sr && gptr->CP < MAX_P) 
     {
-         for (int i = 0; i < MP; i++) 
-         {
-              if (!gptr->player_active[i]) 
-              {
+        for (int i = 0; i < MAX_P; i++) 
+        {
+            if (!gptr->player_active[i]) 
+            {
                 char fifo_name[256];
-                 snprintf(fifo_name, sizeof(fifo_name), "%s%d_to_server", FIFO_PREFIX, i);
+                snprintf(fifo_name, sizeof(fifo_name), "%s%d_to_server", FIFO_PREFIX, i);
                 
-                 if (access(fifo_name, F_OK) == 0) 
-                 {
+                if (access(fifo_name, F_OK) == 0) 
+                {
                     pthread_mutex_lock(&gptr->shm_lock);
                     gptr->player_active[i] = 1;
                     gptr->CP++;
                     pthread_mutex_unlock(&gptr->shm_lock);
                     
-                    printf("Player %d connected (%d/%d)\n", i + 1, 
-                           gptr->CP, MP);
+                    printf("Player %d connected (%d/%d minimum, max %d)\n", 
+                           i + 1, gptr->CP, MIN_P, MAX_P);
                     
-                     char log_msg[256];
+                    char log_msg[256];
                     snprintf(log_msg, sizeof(log_msg), "Player %d connected", i + 1);
                     log_message(log_msg);
                     
@@ -225,7 +228,7 @@ int main()
                         exit(0);
                     } else if (pid < 0) 
                     {
-                         fprintf(stderr, "Fork failed for player %d: %s\n", i, strerror(errno));
+                        fprintf(stderr, "Fork failed for player %d: %s\n", i, strerror(errno));
                         pthread_mutex_lock(&gptr->shm_lock);
                         gptr->player_active[i] = 0;
                         gptr->CP--;
@@ -234,12 +237,44 @@ int main()
                 }
             }
         }
+        
+        // Start game if minimum players reached and no new connections for a while
+        if (gptr->CP >= MIN_P && !gptr->game_active) 
+        {
+            static int wait_counter = 0;
+            wait_counter++;
+            
+            // Wait 5 seconds for more players, then start
+            if (wait_counter >= 5) 
+            {
+                printf("=== Minimum players reached! Starting game with %d players ===\n", gptr->CP);
+                
+                pthread_mutex_lock(&gptr->shm_lock);
+                gptr->game_active = 1;
+                pthread_mutex_unlock(&gptr->shm_lock);
+                
+                char log_msg[256];
+                snprintf(log_msg, sizeof(log_msg), "Game started with %d players", gptr->CP);
+                log_message(log_msg);
+                
+                printf("[Main] Active processes:\n");
+                printf("  - Main server process (PID: %d)\n", getpid());
+                printf("  - Logger thread (TID: %lu)\n", (unsigned long)log_t);
+                printf("  - Scheduler thread (TID: %lu)\n", (unsigned long)sch_t);
+                printf("  - %d child processes (forked for each player)\n", gptr->CP);
+                printf("[Main] Total: 1 process + 2 threads + %d child processes\n\n", gptr->CP);
+                
+                break; // Exit connection loop
+            }
+        }
+        
         sleep(1); 
     }
     
-    if (gptr->CP == MP) 
+    // If max players reached before timeout
+    if (gptr->CP == MAX_P && !gptr->game_active) 
     {
-         printf("=== All players connected! Starting game ===\n");
+        printf("=== All players connected! Starting game ===\n");
         
         pthread_mutex_lock(&gptr->shm_lock);
         gptr->game_active = 1;
@@ -251,17 +286,17 @@ int main()
         printf("  - Main server process (PID: %d)\n", getpid());
         printf("  - Logger thread (TID: %lu)\n", (unsigned long)log_t);
         printf("  - Scheduler thread (TID: %lu)\n", (unsigned long)sch_t);
-        printf("  - 3 child processes (forked for each player)\n");
-        printf("[Main] Total: 1 process + 2 threads + 3 child processes\n\n");
+        printf("  - %d child processes (forked for each player)\n", gptr->CP);
+        printf("[Main] Total: 1 process + 2 threads + %d child processes\n\n", gptr->CP);
     }
     
     printf("[Main] Waiting for game to complete...\n");
     while (sr && gptr->game_active) 
     {
-         sleep(1);
+        sleep(1);
     }
     
-     printf("\n[Main] Game ended. Joining threads...\n");  
+    printf("\n[Main] Game ended. Joining threads...\n");  
     pthread_mutex_lock(&log_queue.mutex);
     pthread_cond_signal(&log_queue.cond);
     pthread_mutex_unlock(&log_queue.mutex);
@@ -289,17 +324,17 @@ void ssm()
     
     if (ftruncate(shm_fd, sizeof(GameInfo)) == -1) 
     {
-         perror("ftruncate failed");
+        perror("ftruncate failed");
         close(shm_fd);
         shm_unlink("/dice_game_shm");
         exit(EXIT_FAILURE);
     }
     
     gptr = mmap(NULL, sizeof(GameInfo), PROT_READ | PROT_WRITE, 
-                        MAP_SHARED, shm_fd, 0);
+                MAP_SHARED, shm_fd, 0);
     if (gptr == MAP_FAILED) 
     {
-         perror("mmap failed");
+        perror("mmap failed");
         close(shm_fd);
         shm_unlink("/dice_game_shm");
         exit(EXIT_FAILURE);
@@ -310,16 +345,16 @@ void csm()
 {
     if (gptr != NULL) 
     {
-         pthread_mutex_destroy(&gptr->shm_lock);
+        pthread_mutex_destroy(&gptr->shm_lock);
         pthread_mutex_destroy(&gptr->table_sync);
         munmap(gptr, sizeof(GameInfo));
     }
     close(shm_fd);
     shm_unlink("/dice_game_shm");
     
-    for (int i = 0; i < MP; i++) 
+    for (int i = 0; i < MAX_P; i++) 
     {
-         char fifo_name[256];
+        char fifo_name[256];
         snprintf(fifo_name, sizeof(fifo_name), "%s%d_to_server", FIFO_PREFIX, i);
         unlink(fifo_name);
         snprintf(fifo_name, sizeof(fifo_name), "%s%d_from_server", FIFO_PREFIX, i);
@@ -337,15 +372,15 @@ void init()
     memset(gptr, 0, sizeof(GameInfo));
     gptr->CT = 0;
     gptr->game_active = 0;
-     gptr->CP = 0;
+    gptr->CP = 0;
     gptr->FW = -1;
     gptr->round = 1;
     
-    for (int i = 0; i < MP; i++) 
+    for (int i = 0; i < MAX_P; i++) 
     {
-         gptr->PP[i] = 0;
-         gptr->player_active[i] = 0;
-         memset(gptr->PN[i], 0, 50);
+        gptr->PP[i] = 0;
+        gptr->player_active[i] = 0;
+        memset(gptr->PN[i], 0, 50);
     }
 }
 
@@ -355,9 +390,9 @@ void reset()
     gptr->CT = 0;
     gptr->FW = -1;
     gptr->round = 1;
-    for (int i = 0; i < MP; i++) 
+    for (int i = 0; i < MAX_P; i++) 
     {
-         gptr->PP[i] = 0;
+        gptr->PP[i] = 0;
     }
     pthread_mutex_unlock(&gptr->shm_lock);
 }
@@ -436,11 +471,12 @@ void *stf(void *arg)
         {
             pthread_mutex_lock(&gptr->shm_lock);
             
-            for (int i = 0; i < MP; i++) 
+            // Check for winner
+            for (int i = 0; i < MAX_P; i++) 
             {
-                if (gptr->PP[i] >= WC) 
+                if (gptr->player_active[i] && gptr->PP[i] >= WC) 
                 {
-                     gptr->FW = i;
+                    gptr->FW = i;
                     gptr->game_active = 0;
                     
                     char log_msg[256];
@@ -451,9 +487,30 @@ void *stf(void *arg)
                     printf("%s\n", log_msg);
                     
                     printf("[Scheduler Thread] Game ended, shutting down\n");
-                     return NULL;
+                    return NULL;
                 }
             }
+            
+            // Advance turn to next active player (Round Robin with skip)
+            int starting_turn = gptr->CT;
+            int attempts = 0;
+            
+            while (attempts < MAX_P) {
+                gptr->CT = (gptr->CT + 1) % MAX_P;
+                
+                // If we found an active player, break
+                if (gptr->player_active[gptr->CT]) {
+                    break;
+                }
+                
+                attempts++;
+            }
+            
+            // Update round counter when we cycle back to player 0
+            if (gptr->CT == 0 && starting_turn != 0) {
+                gptr->round++;
+            }
+            
             pthread_mutex_unlock(&gptr->shm_lock);
         }
         usleep(50000); // 50ms
@@ -472,7 +529,7 @@ void hp(int player_id)
     usleep(100000); // Wait 100ms
     
     printf("[Player-Handler] Handling Player: %s | Slot: %d | My PID: %d | Parent: %d\n", 
-        gptr->PN[player_id], player_id + 1, getpid(), getppid());    
+           gptr->PN[player_id], player_id + 1, getpid(), getppid());    
     srand(time(NULL) ^ getpid());
     
     int fd_read = open(fifo_read, O_RDONLY); 
@@ -480,16 +537,16 @@ void hp(int player_id)
 
     char buffer[256];
 
-    while (gptr->game_active){
-        if (gptr->CT != player_id){
-             usleep(50000); 
+    while (gptr->game_active) {
+        if (gptr->CT != player_id) {
+            usleep(50000); 
             continue;
         }
 
         memset(buffer, 0, sizeof(buffer));
-        if (read(fd_read, buffer, sizeof(buffer))>0){
+        if (read(fd_read, buffer, sizeof(buffer)) > 0) {
             if (strncmp(buffer, "ROLL", 4) == 0) {
-                 int dice_roll = (rand() % 6) + 1;
+                int dice_roll = (rand() % 6) + 1;
                 
                 pthread_mutex_lock(&gptr->shm_lock);
                 
@@ -497,36 +554,44 @@ void hp(int player_id)
                 gptr->PP[player_id] += dice_roll;
 
                 if (gptr->PP[player_id] >= WC) {
-                     gptr->PP[player_id]=WC;
+                    gptr->PP[player_id] = WC;
                     gptr->FW = player_id;
-                     gptr->game_active=0;
+                    gptr->game_active = 0;
                     
                     gptr->winner[player_id]++;
                     pthread_mutex_unlock(&gptr->shm_lock);
                     
                     char win_msg[256];
                     snprintf(win_msg, sizeof(win_msg), 
-                            "%s rolled %d (R%d -> R%d) and WON! Total wins: %d", 
-                            gptr->PN[player_id], dice_roll, old_pos, 
-                            gptr->PP[player_id], gptr->winner[player_id]);
+                             "%s rolled %d (R%d -> R%d) and WON! Total wins: %d", 
+                             gptr->PN[player_id], dice_roll, old_pos, 
+                             gptr->PP[player_id], gptr->winner[player_id]);
                     log_message(win_msg);
                     printf("[Player-Handler] %s\n", win_msg);
                     
                     ss(); 
                 } else {
                     int new_pos = gptr->PP[player_id];
-                    int next_turn = (gptr->CT + 1) % MP;
-                     gptr->CT = next_turn;
+                    
+                    // Find next active player
+                    int next_turn = (gptr->CT + 1) % MAX_P;
+                    int attempts = 0;
+                    while (attempts < MAX_P && !gptr->player_active[next_turn]) {
+                        next_turn = (next_turn + 1) % MAX_P;
+                        attempts++;
+                    }
+                    
+                    gptr->CT = next_turn;
                     
                     if (next_turn == 0) {
-                         gptr->round++;
+                        gptr->round++;
                     }
                     pthread_mutex_unlock(&gptr->shm_lock);
                     
                     char log_msg[256];
                     snprintf(log_msg, sizeof(log_msg), 
-                            "Player %s rolled a %d! (R%d -> R%d)", 
-                            gptr->PN[player_id], dice_roll, old_pos, new_pos);
+                             "Player %s rolled a %d! (R%d -> R%d)", 
+                             gptr->PN[player_id], dice_roll, old_pos, new_pos);
                     log_message(log_msg);
                     printf("[Player-Handler] %s\n", log_msg);
                 }
@@ -537,33 +602,33 @@ void hp(int player_id)
         }
     }
     
-     close(fd_read);
-     close(fd_write);
+    close(fd_read);
+    close(fd_write);
 }
 
-void sigchld_handler(int sig){
-int saved_errno = errno;
-pid_t pid;
-int status;
+void sigchld_handler(int sig) {
+    int saved_errno = errno;
+    pid_t pid;
+    int status;
 
-while ((pid= waitpid(-1, &status, WNOHANG))>0){
-    char buf[128];
-    snprintf(buf, sizeof(buf), "[SYSTEM] Player Process %d has exited, cleaning up the grid", pid);
-    log_message(buf);
-    printf("%s\n", buf);
-}
-errno=saved_errno;
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        char buf[128];
+        snprintf(buf, sizeof(buf), "[SYSTEM] Player Process %d has exited, cleaning up the grid", pid);
+        log_message(buf);
+        printf("%s\n", buf);
+    }
+    errno = saved_errno;
 }
 
 void sigint_handler(int sig) 
-    {
-    printf("\n\n[SYSTEM] Player enter Ctrl + C, \n");
-    printf("[SYSTEM] Finalizing scores and cleaning up the grid... \n");
-    sr=0;
+{
+    printf("\n\n[SYSTEM] Player entered Ctrl + C\n");
+    printf("[SYSTEM] Finalizing scores and cleaning up the grid...\n");
+    sr = 0;
 
-    if(gptr){
+    if (gptr) {
         pthread_mutex_lock(&gptr->shm_lock);
-        gptr->game_active=0;
+        gptr->game_active = 0;
         pthread_mutex_unlock(&gptr->shm_lock);
     }
 }
